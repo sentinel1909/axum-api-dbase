@@ -1,22 +1,37 @@
 // main.rs
-// This is a bare-bones starter for an API using the Axum web framework
-// it has two routes: "/" - root route and "/health_check" - to return API status information
+// This is a bare-bones starter for an API using the Axum web framework.
+// Database connectivity is included, the sqlx crate.
+// it has four routes: "/" - root route and "/health_check" - to return API status information
+// "/database_add" - adds hard coded data into the database
+// "/database_check" - returns all data entered into the database
 // there is a fallback route, which serves up a 404 Not Found, for routes that don't exist yet
 
 // import dependencies
 use axum::{
+    extract::State,
     http::StatusCode,
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Json},
     routing::get,
     Router,
 };
 use color_eyre::eyre::Result;
 use futures::future::pending;
+use serde::Serialize;
+use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::FromRow;
 use std::net::SocketAddr;
 use tokio::signal;
 use tracing::subscriber::set_global_default;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
+
+// struct to hold data read in from the test database
+#[derive(Serialize, Clone, Debug, FromRow)]
+struct TestRecord {
+    id: String,
+    date: String,
+    message: String,
+}
 
 // function to handle graceful shutdown on ctl-c
 async fn shutdown_signal() {
@@ -61,6 +76,32 @@ async fn health_check() -> impl IntoResponse {
     )
 }
 
+// handler function for the route which returns test data from the SQLite database
+async fn database_check(State(pool): State<SqlitePool>) -> impl IntoResponse {
+    let record: Vec<TestRecord> = sqlx::query_as("SELECT * FROM test")
+        .fetch_all(&pool)
+        .await
+        .expect("There's been an error, could not retrieve the records from the database.");
+
+    (StatusCode::OK, Json(record)).into_response()
+}
+
+// handler function for the route which adds some data to the SQLite database
+// data is hardcoded for the time being
+async fn add_data(State(pool): State<SqlitePool>) -> impl IntoResponse {
+    let _result = sqlx::query("INSERT INTO test (id, date, message) VALUES ($1, $2, $3)")
+        .bind("abcdefg".to_string())
+        .bind("2022-12-31".to_string())
+        .bind("Another Test Message".to_string())
+        .execute(&pool)
+        .await
+        .expect("Could not add value to database.");
+    (
+        StatusCode::OK,
+        Html("<p>Test values added to the database. Hit the /database_check route to confirm</p>"),
+    )
+}
+
 // handler function for non existent routes, returns a 404 Not Found
 async fn not_found_404() -> impl IntoResponse {
     (
@@ -74,19 +115,29 @@ async fn not_found_404() -> impl IntoResponse {
 async fn main() -> Result<()> {
     // initialize color_eyre for nice looking error messages
     color_eyre::install()?;
-    
+
     // initialize tracing
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
     set_global_default(subscriber)?;
 
-    // routes for our core API application
+    // SQLite database pool setup
+    let db_connection_str = "sqlite://db/test.db";
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect(db_connection_str)
+        .await?;
+
+    // routes for our core API application, store the database connection pool in state
     let app = Router::new()
         // root route
         .route("/", get(root))
         // health_check route
-        .route("/health_check", get(health_check));
+        .route("/health_check", get(health_check))
+        .route("/database_check", get(database_check))
+        .route("/database_add", get(add_data))
+        .with_state(pool);
 
     let app = app.fallback(not_found_404);
 
