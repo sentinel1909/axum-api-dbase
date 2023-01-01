@@ -15,6 +15,7 @@ use axum::{
     Router,
 };
 use color_eyre::eyre::Result;
+use futures::future::pending;
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
 use sqlx::FromRow;
