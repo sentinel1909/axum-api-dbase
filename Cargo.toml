@@ -1,5 +1,5 @@
 [package]
-name = "axum-api-core"
+name = "axum-api-dbase"
 version = "0.1.0"
 authors = ["Jeffery D. Mitchell", "<sentinel1909@protonmail.com>"]
 edition = "2021"

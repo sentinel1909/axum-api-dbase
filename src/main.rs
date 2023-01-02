@@ -11,7 +11,7 @@ use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Json},
-    routing::{get, post},
+    routing::{get, post, put},
     Router,
 };
 use color_eyre::eyre::Result;
@@ -77,7 +77,8 @@ async fn health_check() -> impl IntoResponse {
 }
 
 // handler function for the route which returns test data from the SQLite database
-async fn database_check(State(pool): State<SqlitePool>) -> impl IntoResponse {
+#[axum_macros::debug_handler]
+async fn read_data(State(pool): State<SqlitePool>) -> impl IntoResponse {
     let record = sqlx::query_as::<_, TestRecord>("SELECT * FROM test")
         .fetch_all(&pool)
         .await
@@ -89,7 +90,7 @@ async fn database_check(State(pool): State<SqlitePool>) -> impl IntoResponse {
 // handler function for the route which adds some data to the SQLite database
 // data is hardcoded for the time being
 #[axum_macros::debug_handler]
-async fn add_data(
+async fn create_data(
     State(pool): State<SqlitePool>,
     Query(params): Query<TestRecord>,
 ) -> impl IntoResponse {
@@ -103,6 +104,38 @@ async fn add_data(
     (
         StatusCode::OK,
         Html("<h1>Data added...check /database_check for results</h1>"),
+    )
+}
+
+#[axum_macros::debug_handler]
+async fn update_data(
+    State(pool): State<SqlitePool>,
+    Query(params): Query<TestRecord>,
+) -> impl IntoResponse {
+    let _result = sqlx::query("UPDATE test SET message=$1 where id=1")
+        .bind(&params.message)
+        .execute(&pool)
+        .await
+        .expect("Failed to update the record.");
+    (
+        StatusCode::OK,
+        Html("<h1>Data updated...check /database_check for results</h1>"),
+    )
+}
+
+#[axum_macros::debug_handler]
+async fn delete_data(
+    State(pool): State<SqlitePool>,
+    Query(params): Query<TestRecord>,
+) -> impl IntoResponse {
+    let _result = sqlx::query("DELETE FROM test WHERE id = $1")
+        .bind(params.id)
+        .execute(&pool)
+        .await
+        .expect("Error deleting the record from the database.");
+    (
+        StatusCode::OK,
+        Html("<h1>Deleted record...check /database_check to confirm."),
     )
 }
 
@@ -139,8 +172,10 @@ async fn main() -> Result<()> {
         .route("/", get(root))
         // health_check route
         .route("/health_check", get(health_check))
-        .route("/database_check", get(database_check))
-        .route("/database_add", post(add_data))
+        .route("/database_read", get(read_data))
+        .route("/database_create", post(create_data))
+        .route("/database_update", put(update_data))
+        .route("/database_delete", post(delete_data))
         .with_state(pool);
 
     let app = app.fallback(not_found_404);

@@ -88,7 +88,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "axum-api-core"
+name = "axum-api-dbase"
 version = "0.1.0"
 dependencies = [
  "axum",
