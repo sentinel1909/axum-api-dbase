@@ -2,8 +2,10 @@
 // This is a bare-bones starter for an API using the Axum web framework.
 // Database connectivity is included, the sqlx crate.
 // it has four routes: "/" - root route and "/health_check" - to return API status information
-// "/database_add" - adds hard coded data into the database
-// "/database_check" - returns all data entered into the database
+// "/database_crate" - adds data to the id, date, and message fields from URL parameters
+// "/database_read" - returns all data entered into the database
+// "/database_update" - updates a single record by id
+// "/database_delete" = deletes a single record by id
 // there is a fallback route, which serves up a 404 Not Found, for routes that don't exist yet
 
 // import dependencies
@@ -28,7 +30,7 @@ use tracing_subscriber::FmtSubscriber;
 // struct to hold data read in from the test database
 #[derive(Deserialize, Serialize, Clone, Debug, FromRow)]
 struct TestRecord {
-    id: String,
+    id: i32,
     date: String,
     message: String,
 }
@@ -103,7 +105,7 @@ async fn create_data(
         .expect("Error writing to database, could not write new values.");
     (
         StatusCode::OK,
-        Html("<h1>Data added...check /database_check for results</h1>"),
+        Html("<h1>Data added...check /database_read for results</h1>"),
     )
 }
 
@@ -112,8 +114,9 @@ async fn update_data(
     State(pool): State<SqlitePool>,
     Query(params): Query<TestRecord>,
 ) -> impl IntoResponse {
-    let _result = sqlx::query("UPDATE test SET message=$1 where id=1")
-        .bind(&params.message)
+    let _result = sqlx::query("UPDATE test SET message=$3 where id=$1")
+        .bind(params.id)
+        .bind(params.message)
         .execute(&pool)
         .await
         .expect("Failed to update the record.");
@@ -137,6 +140,20 @@ async fn delete_data(
         StatusCode::OK,
         Html("<h1>Deleted record...check /database_check to confirm."),
     )
+}
+
+#[axum_macros::debug_handler]
+async fn search_data(
+    State(pool): State<SqlitePool>,
+    Query(params): Query<TestRecord>
+) -> impl IntoResponse {
+    let record = sqlx::query_as::<_, TestRecord>("SELECT * FROM test WHERE id = $1 ")
+        .bind(params.id)
+        .fetch_one(&pool)
+        .await
+        .expect("There's been an error, could not retrieve the record from the database.");
+
+    (StatusCode::OK, Json(record)).into_response()
 }
 
 // handler function for non existent routes, returns a 404 Not Found
@@ -176,6 +193,7 @@ async fn main() -> Result<()> {
         .route("/database_create", post(create_data))
         .route("/database_update", put(update_data))
         .route("/database_delete", post(delete_data))
+        .route("/database_search", get(search_data))
         .with_state(pool);
 
     let app = app.fallback(not_found_404);
