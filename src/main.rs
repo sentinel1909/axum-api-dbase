@@ -94,12 +94,12 @@ async fn read_data(State(pool): State<SqlitePool>) -> impl IntoResponse {
 #[axum_macros::debug_handler]
 async fn create_data(
     State(pool): State<SqlitePool>,
-    Query(params): Query<TestRecord>,
+    Json(payload): Json<TestRecord>,
 ) -> impl IntoResponse {
     let _result = sqlx::query("INSERT INTO test (id, date, message) VALUES ($1, $2, $3)")
-        .bind(params.id)
-        .bind(params.date)
-        .bind(params.message)
+        .bind(payload.id)
+        .bind(payload.date)
+        .bind(payload.message)
         .execute(&pool)
         .await
         .expect("Error writing to database, could not write new values.");
